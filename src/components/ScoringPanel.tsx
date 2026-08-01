@@ -16,6 +16,45 @@ const WICKET_TYPES: { value: WicketType; label: string }[] = [
 
 type PopupType = "wide" | "noball" | "bye" | "legbye" | "wicket" | null;
 
+function calculateCRR(totalRuns: number, completedOvers: number, ballsInCurrentOver: number, ballsPerOver: number) {
+  const oversFaced = completedOvers + ballsInCurrentOver / ballsPerOver;
+  if (oversFaced === 0) return "0.00";
+  return (totalRuns / oversFaced).toFixed(2);
+}
+
+function ballLabel(d: any): string {
+  if (d.isWicket) return "W";
+  if (d.extraType === "wide") return d.extraRuns > 0 ? `Wd+${d.extraRuns}` : "Wd";
+  if (d.extraType === "noball") return d.extraRuns > 0 ? `Nb+${d.extraRuns}` : "Nb";
+  if (d.extraType === "bye") return `B${d.extraRuns}`;
+  if (d.extraType === "legbye") return `Lb${d.extraRuns}`;
+  if (d.runs === 0) return "•";
+  return String(d.runs);
+}
+
+function ballColor(d: any): string {
+  if (d.isWicket) return "bg-red-600 text-white";
+  if (d.extraType === "wide" || d.extraType === "noball") return "bg-amber-600 text-white";
+  if (d.extraType === "bye" || d.extraType === "legbye") return "bg-blue-600 text-white";
+  if (d.runs === 4 || d.runs === 6) return "bg-emerald-600 text-white";
+  if (d.runs === 0) return "bg-slate-700 text-slate-300";
+  return "bg-slate-600 text-white";
+}
+
+function groupCompletedOvers(deliveries: any[], completedOvers: number) {
+  const overs: { overNumber: number; balls: any[]; runs: number }[] = [];
+  for (let i = 0; i < completedOvers; i++) {
+    const balls = deliveries.filter((d) => d.overNumber === i);
+    const runs = balls.reduce((sum, d) => {
+      if (d.extraType === "wide" || d.extraType === "noball") return sum + 1 + d.extraRuns;
+      if (d.extraType === "bye" || d.extraType === "legbye") return sum + d.extraRuns;
+      return sum + d.runs;
+    }, 0);
+    overs.push({ overNumber: i, balls, runs });
+  }
+  return overs;
+}
+
 export default function ScoringPanel({
   matchId,
   match: initialMatch,
@@ -25,6 +64,7 @@ export default function ScoringPanel({
 }) {
   const [match, setMatch] = useState(initialMatch);
   const [popup, setPopup] = useState<PopupType>(null);
+  const [showAllOvers, setShowAllOvers] = useState(false);
   const [pendingWicketFrom, setPendingWicketFrom] = useState<"direct" | "noball" | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -83,123 +123,154 @@ export default function ScoringPanel({
 
   const handleWicketType = (wicketType: WicketType) => {
     if (pendingWicketFrom === "noball") {
-      sendDelivery({
-        runs: 0,
-        extraType: "noball",
-        extraRuns: 0,
-        isWicket: true,
-        wicketType,
-      });
+      sendDelivery({ runs: 0, extraType: "noball", extraRuns: 0, isWicket: true, wicketType });
     } else {
       sendDelivery({ runs: 0, extraType: "none", extraRuns: 0, isWicket: true, wicketType });
     }
   };
 
   if (match.status === "innings_break") {
-    return <InningsBreakScreen matchId={matchId} match={match} />;
+    return <InningsBreakScreen />;
   }
-
   if (match.status === "completed") {
     return <MatchCompleteScreen match={match} />;
   }
 
   const oversDisplay = `${innings.completedOvers}.${innings.ballsInCurrentOver}`;
+  const lastOver = groupCompletedOvers(innings.deliveries, innings.completedOvers).slice(-1)[0];
+  const allOvers = groupCompletedOvers(innings.deliveries, innings.completedOvers).reverse();
+  const crr = calculateCRR(innings.totalRuns, innings.completedOvers, innings.ballsInCurrentOver, match.ballsPerOver);
+  const currentOverBalls = innings.deliveries.filter((d: any) => d.overNumber === innings.completedOvers);
+
+  const runBtn = "rounded-lg bg-slate-800 border border-slate-700 text-white font-bold hover:border-emerald-600 active:scale-95 transition disabled:opacity-40 py-3.5 text-base";
 
   return (
     <div className="min-h-screen bg-slate-950 pb-8">
-      {/* Score header */}
-      <div className="bg-gradient-to-br from-emerald-900 to-slate-900 px-4 py-6 sm:px-6">
-        <p className="text-slate-300 text-sm">{innings.battingTeam} batting</p>
-        <div className="flex items-end gap-3 mt-1">
-          <span className="text-3xl sm:text-4xl font-bold text-white">
-            {innings.totalRuns}/{innings.wickets}
-          </span>
-          <span className="text-slate-300 text-base sm:text-lg mb-1">
-            ({oversDisplay}/{match.totalOvers})
-          </span>
+      {/* Score header — bigger, highlighted */}
+      <div className="bg-gradient-to-br from-emerald-800 via-emerald-900 to-slate-900 px-4 py-5 sm:px-6 sm:py-7 shadow-lg">
+        <p className="text-emerald-200 text-sm font-medium">{innings.battingTeam} batting</p>
+        <div className="flex items-end justify-between mt-1 flex-wrap gap-2">
+          <div className="flex items-end gap-3">
+            <span className="text-4xl sm:text-5xl font-extrabold text-white leading-none">
+              {innings.totalRuns}/{innings.wickets}
+            </span>
+            <span className="text-slate-200 text-lg sm:text-xl mb-1">
+              ({oversDisplay}/{match.totalOvers})
+            </span>
+          </div>
+          <div className="bg-black/25 rounded-lg px-3 py-1.5">
+            <p className="text-[10px] text-emerald-200 uppercase tracking-wide">CRR</p>
+            <p className="text-white font-bold text-lg leading-none">{crr}</p>
+          </div>
         </div>
         {match.currentInningsNumber === 2 && (
-          <p className="text-slate-400 text-xs mt-1">
+          <p className="text-emerald-200 text-xs mt-2">
             Target: {match.innings[0].totalRuns + 1}
           </p>
         )}
       </div>
 
-      {error && (
-        <p className="text-red-400 text-sm text-center mt-3 px-4">{error}</p>
-      )}
-
-      {/* Button grid */}
-      <div className="px-3 sm:px-6 mt-4">
-        <div className="grid grid-cols-4 gap-2 sm:gap-3">
-          {[0, 1, 2, 3, 4, 6, 5, 7].map((run) => (
-            <button
-              key={run}
-              disabled={loading}
-              onClick={() => handleRun(run)}
-              className="aspect-square rounded-xl bg-slate-800 border border-slate-700 text-white text-lg sm:text-xl font-bold hover:border-emerald-600 active:scale-95 transition disabled:opacity-40"
+      {/* This-over ball sequence */}
+      <div className="px-4 sm:px-6 py-3 bg-slate-900 border-b border-slate-800">
+        <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-2">This Over</p>
+        <div className="flex gap-2 overflow-x-auto">
+          {currentOverBalls.length === 0 && (
+            <span className="text-slate-600 text-sm">No balls yet</span>
+          )}
+          {currentOverBalls.map((d: any, i: number) => (
+            <span
+              key={i}
+              className={`flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold ${ballColor(d)}`}
             >
-              {run}
-            </button>
+              {ballLabel(d)}
+            </span>
           ))}
-
-          <button
-            disabled={loading}
-            onClick={() => setPopup("wide")}
-            className="aspect-square rounded-xl bg-amber-900/40 border border-amber-700 text-amber-300 text-sm sm:text-base font-bold hover:border-amber-500 active:scale-95 transition disabled:opacity-40"
-          >
-            WD
-          </button>
-          <button
-            disabled={loading}
-            onClick={() => setPopup("noball")}
-            className="aspect-square rounded-xl bg-amber-900/40 border border-amber-700 text-amber-300 text-sm sm:text-base font-bold hover:border-amber-500 active:scale-95 transition disabled:opacity-40"
-          >
-            NB
-          </button>
-          <button
-            disabled={loading}
-            onClick={() => setPopup("bye")}
-            className="aspect-square rounded-xl bg-blue-900/40 border border-blue-700 text-blue-300 text-sm sm:text-base font-bold hover:border-blue-500 active:scale-95 transition disabled:opacity-40"
-          >
-            BYE
-          </button>
-          <button
-            disabled={loading}
-            onClick={() => setPopup("legbye")}
-            className="aspect-square rounded-xl bg-blue-900/40 border border-blue-700 text-blue-300 text-sm sm:text-base font-bold hover:border-blue-500 active:scale-95 transition disabled:opacity-40"
-          >
-            LB
-          </button>
-
-          <button
-            disabled={loading}
-            onClick={() => {
-              setPendingWicketFrom("direct");
-              setPopup("wicket");
-            }}
-            className="aspect-square rounded-xl bg-red-900/40 border border-red-700 text-red-300 text-sm sm:text-base font-bold hover:border-red-500 active:scale-95 transition disabled:opacity-40"
-          >
-            OUT
-          </button>
-          <button
-            disabled={loading || innings.deliveries.length === 0}
-            onClick={handleUndo}
-            className="aspect-square rounded-xl bg-slate-700 border border-slate-600 text-white text-xs sm:text-sm font-bold hover:border-slate-500 active:scale-95 transition disabled:opacity-40"
-          >
-            UNDO
-          </button>
         </div>
       </div>
 
+      {lastOver && (
+        <div className="px-4 sm:px-6 py-3 bg-slate-900/60 border-b border-slate-800">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wide">Last Over</p>
+            <button
+              onClick={() => setShowAllOvers(true)}
+              className="text-[11px] text-emerald-400 hover:text-emerald-300 font-medium"
+            >
+              View All Overs
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 w-12 flex-shrink-0">
+              Ov {lastOver.overNumber + 1}
+            </span>
+            <div className="flex gap-1.5 overflow-x-auto flex-1">
+              {lastOver.balls.map((d: any, i: number) => (
+                <span
+                  key={i}
+                  className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${ballColor(d)}`}
+                >
+                  {ballLabel(d)}
+                </span>
+              ))}
+            </div>
+            <span className="text-xs text-slate-300 font-semibold flex-shrink-0 w-6 text-right">
+              {lastOver.runs}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {error && <p className="text-red-400 text-sm text-center mt-3 px-4">{error}</p>}
+
+      {/* Compact button grid */}
+      <div className="px-3 sm:px-6 mt-4">
+        <div className="grid grid-cols-4 gap-2">
+          <button disabled={loading} onClick={() => handleRun(0)} className={runBtn}>0</button>
+          <button disabled={loading} onClick={() => handleRun(1)} className={runBtn}>1</button>
+          <button disabled={loading} onClick={() => handleRun(2)} className={runBtn}>2</button>
+          <button
+            disabled={loading || innings.deliveries.length === 0}
+            onClick={handleUndo}
+            className="rounded-lg bg-slate-800 border border-slate-700 text-teal-400 font-bold text-sm hover:border-teal-600 active:scale-95 transition disabled:opacity-40"
+          >
+            UNDO
+          </button>
+
+          <button disabled={loading} onClick={() => handleRun(3)} className={runBtn}>3</button>
+          <button disabled={loading} onClick={() => handleRun(4)} className={runBtn}>4</button>
+          <button disabled={loading} onClick={() => handleRun(6)} className={runBtn}>6</button>
+          <div className="grid grid-rows-2 gap-2">
+            <button disabled={loading} onClick={() => handleRun(5)} className="rounded-lg bg-slate-800 border border-slate-700 text-white text-xs font-semibold active:scale-95 transition disabled:opacity-40">5</button>
+            <button disabled={loading} onClick={() => handleRun(7)} className="rounded-lg bg-slate-800 border border-slate-700 text-white text-xs font-semibold active:scale-95 transition disabled:opacity-40">7</button>
+          </div>
+        </div>
+
+        {/* Extras row — slimmer */}
+        <div className="grid grid-cols-4 gap-2 mt-2">
+          <button disabled={loading} onClick={() => setPopup("wide")} className="rounded-lg bg-amber-900/30 border border-amber-800 text-amber-300 text-sm font-semibold py-2.5 hover:border-amber-600 active:scale-95 transition disabled:opacity-40">WD</button>
+          <button disabled={loading} onClick={() => setPopup("noball")} className="rounded-lg bg-amber-900/30 border border-amber-800 text-amber-300 text-sm font-semibold py-2.5 hover:border-amber-600 active:scale-95 transition disabled:opacity-40">NB</button>
+          <button disabled={loading} onClick={() => setPopup("bye")} className="rounded-lg bg-blue-900/30 border border-blue-800 text-blue-300 text-sm font-semibold py-2.5 hover:border-blue-600 active:scale-95 transition disabled:opacity-40">BYE</button>
+          <button disabled={loading} onClick={() => setPopup("legbye")} className="rounded-lg bg-blue-900/30 border border-blue-800 text-blue-300 text-sm font-semibold py-2.5 hover:border-blue-600 active:scale-95 transition disabled:opacity-40">LB</button>
+        </div>
+
+        {/* OUT — prominent, full width */}
+        <button
+          disabled={loading}
+          onClick={() => { setPendingWicketFrom("direct"); setPopup("wicket"); }}
+          className="w-full mt-2 rounded-lg bg-red-900/30 border border-red-700 text-red-300 font-bold py-2.5 hover:border-red-500 active:scale-95 transition disabled:opacity-40"
+        >
+          OUT
+        </button>
+      </div>
+
       {/* Shortcuts */}
-      <div className="px-3 sm:px-6 mt-6">
-        <p className="text-xs text-slate-500 uppercase tracking-wide mb-2">Shortcuts</p>
+      <div className="px-3 sm:px-6 mt-5">
+        <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-2">Shortcuts</p>
         <div className="flex flex-wrap gap-2">
           <button
             disabled={loading}
             onClick={() => sendDelivery({ runs: 0, extraType: "none", extraRuns: 5, isWicket: false })}
-            className="text-sm bg-slate-800 border border-slate-700 text-slate-300 px-3 py-2 rounded-lg hover:border-slate-600 active:scale-95 transition disabled:opacity-40"
+            className="text-xs bg-slate-800 border border-slate-700 text-slate-300 px-3 py-2 rounded-lg hover:border-slate-600 active:scale-95 transition disabled:opacity-40"
           >
             Give Penalty (+5)
           </button>
@@ -209,37 +280,19 @@ export default function ScoringPanel({
 
       {/* Popups */}
       {popup === "wide" && (
-        <ExtraPopup
-          title="Wide"
-          options={[0, 1, 2, 3, 4, 6]}
-          optionLabel={(n) => `WD+${n}`}
-          onSelect={(n) =>
-            sendDelivery({ runs: 0, extraType: "wide", extraRuns: n, isWicket: false })
-          }
-          onClose={() => setPopup(null)}
-        />
+        <ExtraPopup title="Wide" options={[0, 1, 2, 3, 4, 6]} optionLabel={(n) => `WD+${n}`}
+          onSelect={(n) => sendDelivery({ runs: 0, extraType: "wide", extraRuns: n, isWicket: false })}
+          onClose={() => setPopup(null)} />
       )}
       {popup === "bye" && (
-        <ExtraPopup
-          title="Bye"
-          options={[1, 2, 3, 4]}
-          optionLabel={(n) => `B+${n}`}
-          onSelect={(n) =>
-            sendDelivery({ runs: 0, extraType: "bye", extraRuns: n, isWicket: false })
-          }
-          onClose={() => setPopup(null)}
-        />
+        <ExtraPopup title="Bye" options={[1, 2, 3, 4]} optionLabel={(n) => `B+${n}`}
+          onSelect={(n) => sendDelivery({ runs: 0, extraType: "bye", extraRuns: n, isWicket: false })}
+          onClose={() => setPopup(null)} />
       )}
       {popup === "legbye" && (
-        <ExtraPopup
-          title="Leg Bye"
-          options={[1, 2, 3, 4]}
-          optionLabel={(n) => `LB+${n}`}
-          onSelect={(n) =>
-            sendDelivery({ runs: 0, extraType: "legbye", extraRuns: n, isWicket: false })
-          }
-          onClose={() => setPopup(null)}
-        />
+        <ExtraPopup title="Leg Bye" options={[1, 2, 3, 4]} optionLabel={(n) => `LB+${n}`}
+          onSelect={(n) => sendDelivery({ runs: 0, extraType: "legbye", extraRuns: n, isWicket: false })}
+          onClose={() => setPopup(null)} />
       )}
       {popup === "noball" && (
         <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 px-4">
@@ -247,32 +300,17 @@ export default function ScoringPanel({
             <h3 className="text-white font-semibold mb-4">No Ball</h3>
             <div className="grid grid-cols-3 gap-2 mb-2">
               {[0, 1, 2, 3, 4, 6].map((n) => (
-                <button
-                  key={n}
-                  onClick={() =>
-                    sendDelivery({ runs: 0, extraType: "noball", extraRuns: n, isWicket: false })
-                  }
-                  className="py-3 rounded-lg bg-slate-800 border border-slate-700 text-white font-semibold hover:border-emerald-600 active:scale-95 transition"
-                >
+                <button key={n} onClick={() => sendDelivery({ runs: 0, extraType: "noball", extraRuns: n, isWicket: false })}
+                  className="py-3 rounded-lg bg-slate-800 border border-slate-700 text-white font-semibold hover:border-emerald-600 active:scale-95 transition">
                   NB{n > 0 ? `+${n}` : ""}
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => {
-                setPendingWicketFrom("noball");
-                setPopup("wicket");
-              }}
-              className="w-full py-3 rounded-lg bg-red-900/40 border border-red-700 text-red-300 font-semibold hover:border-red-500 active:scale-95 transition mt-2"
-            >
+            <button onClick={() => { setPendingWicketFrom("noball"); setPopup("wicket"); }}
+              className="w-full py-3 rounded-lg bg-red-900/40 border border-red-700 text-red-300 font-semibold hover:border-red-500 active:scale-95 transition mt-2">
               Wicket (Run Out)
             </button>
-            <button
-              onClick={() => setPopup(null)}
-              className="w-full py-2 mt-3 text-sm text-slate-400 hover:text-white"
-            >
-              Cancel
-            </button>
+            <button onClick={() => setPopup(null)} className="w-full py-2 mt-3 text-sm text-slate-400 hover:text-white">Cancel</button>
           </div>
         </div>
       )}
@@ -282,24 +320,53 @@ export default function ScoringPanel({
             <h3 className="text-white font-semibold mb-4">Dismissal Type</h3>
             <div className="grid grid-cols-2 gap-2">
               {WICKET_TYPES.map((w) => (
-                <button
-                  key={w.value}
-                  onClick={() => handleWicketType(w.value)}
-                  className="py-3 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm font-medium hover:border-red-500 active:scale-95 transition"
-                >
+                <button key={w.value} onClick={() => handleWicketType(w.value)}
+                  className="py-3 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm font-medium hover:border-red-500 active:scale-95 transition">
                   {w.label}
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => {
-                setPopup(null);
-                setPendingWicketFrom(null);
-              }}
-              className="w-full py-2 mt-4 text-sm text-slate-400 hover:text-white"
-            >
-              Cancel
-            </button>
+            <button onClick={() => { setPopup(null); setPendingWicketFrom(null); }}
+              className="w-full py-2 mt-4 text-sm text-slate-400 hover:text-white">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* View All Overs modal */}
+      {showAllOvers && (
+        <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 px-4">
+          <div className="w-full max-w-md bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-800 p-5 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white font-semibold">All Overs — {innings.battingTeam}</h3>
+              <button onClick={() => setShowAllOvers(false)} className="text-slate-400 hover:text-white text-sm">
+                Close
+              </button>
+            </div>
+            <div className="space-y-3 overflow-y-auto">
+              {allOvers.length === 0 && (
+                <p className="text-slate-500 text-sm">No completed overs yet.</p>
+              )}
+              {allOvers.map((over) => (
+                <div key={over.overNumber} className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400 w-12 flex-shrink-0">
+                    Ov {over.overNumber + 1}
+                  </span>
+                  <div className="flex gap-1.5 overflow-x-auto flex-1">
+                    {over.balls.map((d: any, i: number) => (
+                      <span
+                        key={i}
+                        className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${ballColor(d)}`}
+                      >
+                        {ballLabel(d)}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="text-xs text-slate-300 font-semibold flex-shrink-0 w-6 text-right">
+                    {over.runs}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -307,18 +374,9 @@ export default function ScoringPanel({
   );
 }
 
-function ExtraPopup({
-  title,
-  options,
-  optionLabel,
-  onSelect,
-  onClose,
-}: {
-  title: string;
-  options: number[];
-  optionLabel: (n: number) => string;
-  onSelect: (n: number) => void;
-  onClose: () => void;
+function ExtraPopup({ title, options, optionLabel, onSelect, onClose }: {
+  title: string; options: number[]; optionLabel: (n: number) => string;
+  onSelect: (n: number) => void; onClose: () => void;
 }) {
   return (
     <div className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 px-4">
@@ -326,18 +384,13 @@ function ExtraPopup({
         <h3 className="text-white font-semibold mb-4">{title}</h3>
         <div className="grid grid-cols-3 gap-2">
           {options.map((n) => (
-            <button
-              key={n}
-              onClick={() => onSelect(n)}
-              className="py-3 rounded-lg bg-slate-800 border border-slate-700 text-white font-semibold hover:border-emerald-600 active:scale-95 transition"
-            >
+            <button key={n} onClick={() => onSelect(n)}
+              className="py-3 rounded-lg bg-slate-800 border border-slate-700 text-white font-semibold hover:border-emerald-600 active:scale-95 transition">
               {optionLabel(n)}
             </button>
           ))}
         </div>
-        <button onClick={onClose} className="w-full py-2 mt-3 text-sm text-slate-400 hover:text-white">
-          Cancel
-        </button>
+        <button onClick={onClose} className="w-full py-2 mt-3 text-sm text-slate-400 hover:text-white">Cancel</button>
       </div>
     </div>
   );
@@ -356,33 +409,20 @@ function EndInningsButton({ matchId, onDone }: { matchId: string; onDone: (m: an
   if (confirming) {
     return (
       <div className="flex gap-2">
-        <button
-          onClick={handleEnd}
-          className="text-sm bg-red-700 text-white px-3 py-2 rounded-lg active:scale-95 transition"
-        >
-          Confirm End Innings
-        </button>
-        <button
-          onClick={() => setConfirming(false)}
-          className="text-sm bg-slate-800 border border-slate-700 text-slate-300 px-3 py-2 rounded-lg active:scale-95 transition"
-        >
-          Cancel
-        </button>
+        <button onClick={handleEnd} className="text-xs bg-red-700 text-white px-3 py-2 rounded-lg active:scale-95 transition">Confirm End Innings</button>
+        <button onClick={() => setConfirming(false)} className="text-xs bg-slate-800 border border-slate-700 text-slate-300 px-3 py-2 rounded-lg active:scale-95 transition">Cancel</button>
       </div>
     );
   }
 
   return (
-    <button
-      onClick={() => setConfirming(true)}
-      className="text-sm bg-slate-800 border border-slate-700 text-slate-300 px-3 py-2 rounded-lg hover:border-red-600 active:scale-95 transition"
-    >
+    <button onClick={() => setConfirming(true)} className="text-xs bg-slate-800 border border-slate-700 text-slate-300 px-3 py-2 rounded-lg hover:border-red-600 active:scale-95 transition">
       End Innings
     </button>
   );
 }
 
-function InningsBreakScreen({ matchId, match }: { matchId: string; match: any }) {
+function InningsBreakScreen() {
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
       <p className="text-white">Innings break — summary screen coming in Step 22</p>
