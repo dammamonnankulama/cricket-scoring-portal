@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { WicketType } from "@/lib/scoringEngine";
+import Link from "next/link";
 
 const WICKET_TYPES: { value: WicketType; label: string }[] = [
   { value: "bowled", label: "Bowled" },
@@ -20,6 +21,25 @@ function calculateCRR(totalRuns: number, completedOvers: number, ballsInCurrentO
   const oversFaced = completedOvers + ballsInCurrentOver / ballsPerOver;
   if (oversFaced === 0) return "0.00";
   return (totalRuns / oversFaced).toFixed(2);
+}
+
+function calculateChaseInfo(
+  target: number,
+  totalRuns: number,
+  completedOvers: number,
+  ballsInCurrentOver: number,
+  ballsPerOver: number,
+  totalOvers: number
+) {
+  const runsNeeded = target - totalRuns;
+  const ballsBowled = completedOvers * ballsPerOver + ballsInCurrentOver;
+  const totalBalls = totalOvers * ballsPerOver;
+  const ballsRemaining = totalBalls - ballsBowled;
+
+  const oversRemaining = ballsRemaining / ballsPerOver;
+  const rrr = oversRemaining > 0 ? (runsNeeded / oversRemaining).toFixed(2) : "0.00";
+
+  return { runsNeeded, ballsRemaining, rrr };
 }
 
 function ballLabel(d: any): string {
@@ -130,7 +150,7 @@ export default function ScoringPanel({
   };
 
   if (match.status === "innings_break") {
-    return <InningsBreakScreen />;
+    return <InningsBreakScreen matchId={matchId} match={match} onDone={setMatch} />;
   }
   if (match.status === "completed") {
     return <MatchCompleteScreen match={match} />;
@@ -163,11 +183,31 @@ export default function ScoringPanel({
             <p className="text-white font-bold text-lg leading-none">{crr}</p>
           </div>
         </div>
-        {match.currentInningsNumber === 2 && (
-          <p className="text-emerald-200 text-xs mt-2">
-            Target: {match.innings[0].totalRuns + 1}
-          </p>
-        )}
+        {match.currentInningsNumber === 2 && (() => {
+          const target = match.innings[0].totalRuns + 1;
+          const { runsNeeded, ballsRemaining, rrr } = calculateChaseInfo(
+            target,
+            innings.totalRuns,
+            innings.completedOvers,
+            innings.ballsInCurrentOver,
+            match.ballsPerOver,
+            match.totalOvers
+          );
+
+          return (
+            <div className="mt-3 flex items-center justify-between flex-wrap gap-2">
+              <p className="text-white text-sm font-medium bg-black/25 rounded-lg px-3 py-1.5">
+                {runsNeeded > 0
+                  ? `${runsNeeded} runs needed in ${ballsRemaining} ball${ballsRemaining === 1 ? "" : "s"}`
+                  : "Target reached"}
+              </p>
+              <div className="bg-black/25 rounded-lg px-3 py-1.5">
+                <p className="text-[10px] text-emerald-200 uppercase tracking-wide">RRR</p>
+                <p className="text-white font-bold text-sm leading-none">{rrr}</p>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* This-over ball sequence */}
@@ -422,18 +462,143 @@ function EndInningsButton({ matchId, onDone }: { matchId: string; onDone: (m: an
   );
 }
 
-function InningsBreakScreen() {
+function InningsBreakScreen({
+  matchId,
+  match,
+  onDone,
+}: {
+  matchId: string;
+  match: any;
+  onDone: (m: any) => void;
+}) {
+  const innings = match.innings[0];
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleStartNext = async () => {
+    setLoading(true);
+    setError("");
+    const res = await fetch(`/api/matches/${matchId}/next-innings`, { method: "POST" });
+    const data = await res.json();
+    setLoading(false);
+
+    if (!res.ok) {
+      setError(data.error || "Something went wrong");
+      return;
+    }
+
+    onDone(data.match);
+  };
+
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
-      <p className="text-white">Innings break — summary screen coming in Step 22</p>
+    <div className="min-h-screen bg-slate-950 px-4 py-8 sm:px-6">
+      <div className="max-w-md mx-auto">
+        <h1 className="text-xl font-bold text-white mb-1">Innings Complete</h1>
+        <p className="text-sm text-slate-400 mb-6">End of 1st Innings</p>
+
+        <InningsSummaryCard innings={innings} totalOvers={match.totalOvers} />
+
+        {error && <p className="text-red-400 text-sm mt-4">{error}</p>}
+
+        <button
+          onClick={handleStartNext}
+          disabled={loading}
+          className="w-full mt-6 bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-3 rounded-lg transition disabled:opacity-50 active:scale-[0.98]"
+        >
+          {loading ? "Starting..." : "Start Next Innings"}
+        </button>
+      </div>
     </div>
   );
 }
 
+
 function MatchCompleteScreen({ match }: { match: any }) {
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center px-4">
-      <p className="text-white">{match.result}</p>
+    <div className="min-h-screen bg-slate-950 px-4 py-8 sm:px-6">
+      <div className="max-w-md mx-auto">
+        <div className="text-center mb-6">
+          <span className="text-4xl">🏆</span>
+          <h1 className="text-xl font-bold text-white mt-2">{match.result}</h1>
+        </div>
+
+        <div className="space-y-4">
+          <InningsSummaryCard innings={match.innings[0]} totalOvers={match.totalOvers} />
+          <InningsSummaryCard innings={match.innings[1]} totalOvers={match.totalOvers} />
+        </div>
+
+        <Link
+          href="/dashboard"
+          className="block text-center w-full mt-6 bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-3 rounded-lg transition active:scale-[0.98]"
+        >
+          Back to Dashboard
+        </Link>
+      </div>
     </div>
   );
+}
+
+function InningsSummaryCard({ innings, totalOvers }: { innings: any; totalOvers: number }) {
+  const oversDisplay = `${innings.completedOvers}.${innings.ballsInCurrentOver}`;
+  const totalExtras =
+    innings.extras.wides + innings.extras.noBalls + innings.extras.byes + innings.extras.legByes;
+
+  return (
+    <div className="bg-slate-900 rounded-xl border border-slate-800 p-5">
+      <p className="text-slate-400 text-sm">{innings.battingTeam}</p>
+      <p className="text-3xl font-extrabold text-white mt-1">
+        {innings.totalRuns}/{innings.wickets}
+        <span className="text-base font-normal text-slate-400 ml-2">
+          ({oversDisplay}/{totalOvers} ov)
+        </span>
+      </p>
+
+      <div className="grid grid-cols-4 gap-2 mt-4 text-center">
+        <div className="bg-slate-800 rounded-lg py-2">
+          <p className="text-[10px] text-slate-500 uppercase">WD</p>
+          <p className="text-white text-sm font-semibold">{innings.extras.wides}</p>
+        </div>
+        <div className="bg-slate-800 rounded-lg py-2">
+          <p className="text-[10px] text-slate-500 uppercase">NB</p>
+          <p className="text-white text-sm font-semibold">{innings.extras.noBalls}</p>
+        </div>
+        <div className="bg-slate-800 rounded-lg py-2">
+          <p className="text-[10px] text-slate-500 uppercase">B</p>
+          <p className="text-white text-sm font-semibold">{innings.extras.byes}</p>
+        </div>
+        <div className="bg-slate-800 rounded-lg py-2">
+          <p className="text-[10px] text-slate-500 uppercase">LB</p>
+          <p className="text-white text-sm font-semibold">{innings.extras.legByes}</p>
+        </div>
+      </div>
+      <p className="text-xs text-slate-500 mt-2">Total extras: {totalExtras}</p>
+
+      {innings.fallOfWickets.length > 0 && (
+        <div className="mt-4">
+          <p className="text-[10px] text-slate-500 uppercase tracking-wide mb-2">Fall of Wickets</p>
+          <div className="space-y-1">
+            {innings.fallOfWickets.map((fow: any) => (
+              <p key={fow.wicketNumber} className="text-xs text-slate-300">
+                {fow.wicketNumber}-{fow.teamScore} ({fow.overs} ov, {formatWicketType(fow.wicketType)})
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function formatWicketType(type: string) {
+  const map: Record<string, string> = {
+    bowled: "Bowled",
+    caught: "Caught",
+    caughtBehind: "Caught Behind",
+    caughtAndBowled: "Caught & Bowled",
+    runOut: "Run Out",
+    lbw: "LBW",
+    stumped: "Stumped",
+    retiredHurt: "Retired Hurt",
+  };
+  return map[type] || type;
 }
