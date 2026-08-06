@@ -15,7 +15,7 @@ const WICKET_TYPES: { value: WicketType; label: string }[] = [
   { value: "retiredHurt", label: "Retired Hurt" },
 ];
 
-type PopupType = "wide" | "noball" | "bye" | "legbye" | "wicket" | null;
+type PopupType = "wide" | "noball" | "bye" | "legbye" | "wicket" | "runoutRuns" | null;
 
 function calculateCRR(totalRuns: number, completedOvers: number, ballsInCurrentOver: number, ballsPerOver: number) {
   const oversFaced = completedOvers + ballsInCurrentOver / ballsPerOver;
@@ -142,6 +142,10 @@ export default function ScoringPanel({
   };
 
   const handleWicketType = (wicketType: WicketType) => {
+    if (wicketType === "runOut") {
+      setPopup("runoutRuns");
+      return;
+    }
     if (pendingWicketFrom === "noball") {
       sendDelivery({ runs: 0, extraType: "noball", extraRuns: 0, isWicket: true, wicketType });
     } else {
@@ -155,6 +159,26 @@ export default function ScoringPanel({
   if (match.status === "completed") {
     return <MatchCompleteScreen match={match} />;
   }
+
+  const handleRunOutRuns = (runsCompleted: number) => {
+    if (pendingWicketFrom === "noball") {
+      sendDelivery({
+        runs: 0,
+        extraType: "noball",
+        extraRuns: runsCompleted,
+        isWicket: true,
+        wicketType: "runOut",
+      });
+    } else {
+      sendDelivery({
+        runs: runsCompleted,
+        extraType: "none",
+        extraRuns: 0,
+        isWicket: true,
+        wicketType: "runOut",
+      });
+    }
+  };
 
   const oversDisplay = `${innings.completedOvers}.${innings.ballsInCurrentOver}`;
   const lastOver = groupCompletedOvers(innings.deliveries, innings.completedOvers).slice(-1)[0];
@@ -370,6 +394,16 @@ export default function ScoringPanel({
               className="w-full py-2 mt-4 text-sm text-slate-400 hover:text-white">Cancel</button>
           </div>
         </div>
+      )}
+
+      {popup === "runoutRuns" && (
+        <ExtraPopup
+          title="Runs Completed Before Run Out"
+          options={[0, 1, 2, 3, 4, 6]}
+          optionLabel={(n) => `${n}+W`}
+          onSelect={handleRunOutRuns}
+          onClose={() => { setPopup(null); setPendingWicketFrom(null); }}
+        />
       )}
 
       {/* View All Overs modal */}
