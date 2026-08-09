@@ -2,7 +2,7 @@ import connectDB from "@/lib/mongodb";
 import Match from "@/models/Match";
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
-import { applyDelivery, checkInningsComplete, DeliveryInput } from "@/lib/scoringEngine";
+import { applyDelivery, checkInningsComplete, deriveNextFacing, DeliveryInput } from "@/lib/scoringEngine";
 
 export async function POST(
   request: Request,
@@ -15,7 +15,11 @@ export async function POST(
     }
 
     const { id } = await params;
-    const input: DeliveryInput = await request.json();
+    const body = await request.json();
+    const { newBatterName, newBowlerName, ...input } = body as DeliveryInput & {
+      newBatterName?: string;
+      newBowlerName?: string;
+    };
 
     await connectDB();
     const match = await Match.findById(id);
@@ -29,13 +33,49 @@ export async function POST(
     }
 
     const inningsIndex = match.currentInningsNumber - 1;
-    const currentInnings = match.innings[inningsIndex];
+    const currentInnings = match.innings[inningsIndex].toObject();
 
     if (currentInnings.isCompleted) {
       return NextResponse.json({ error: "Current innings is already complete" }, { status: 409 });
     }
 
-    const updated = applyDelivery(currentInnings.toObject(), match.ballsPerOver, input);
+    if (currentInnings.isSquadBased) {
+      if (currentInnings.deliveries.length === 0) {
+        if (!currentInnings.openingStriker || !currentInnings.openingNonStriker || !currentInnings.openingBowler) {
+          return NextResponse.json({ error: "Opening players have not been set" }, { status: 409 });
+        }
+        input.strikerName = currentInnings.openingStriker;
+        input.nonStrikerName = currentInnings.openingNonStriker;
+        input.bowlerName = currentInnings.openingBowler;
+      } else {
+        const facing = deriveNextFacing(currentInnings);
+
+        if (facing.needsNewBatter) {
+          if (!newBatterName) {
+            return NextResponse.json({ error: "A new batter must be selected" }, { status: 400 });
+          }
+          input.strikerName = facing.striker || newBatterName;
+          input.nonStrikerName = facing.striker ? newBatterName : facing.nonStriker;
+        } else {
+          input.strikerName = facing.striker;
+          input.nonStrikerName = facing.nonStriker;
+        }
+
+        if (facing.needsNewBowler) {
+          if (!newBowlerName) {
+            return NextResponse.json({ error: "A new bowler must be selected" }, { status: 400 });
+          }
+          if (newBowlerName === facing.previousBowlerName) {
+            return NextResponse.json({ error: "The same bowler cannot bowl consecutive overs" }, { status: 400 });
+          }
+          input.bowlerName = newBowlerName;
+        } else {
+          input.bowlerName = facing.bowler;
+        }
+      }
+    }
+
+    const updated = applyDelivery(currentInnings, match.ballsPerOver, input);
 
     const target =
       match.currentInningsNumber === 2 ? match.innings[0].totalRuns + 1 : null;
@@ -61,9 +101,9 @@ export async function POST(
       innings: match.innings[inningsIndex],
       matchStatus: match.status,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Add delivery error:", error);
-    return NextResponse.json({ error: "Something went wrong" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Something went wrong" }, { status: 500 });
   }
 }
 

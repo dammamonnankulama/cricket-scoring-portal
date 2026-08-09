@@ -7,11 +7,14 @@ export default function TossForm({
   matchId,
   team1Name,
   team2Name,
+  isSquadBased,
 }: {
   matchId: string;
   team1Name: string;
   team2Name: string;
+  isSquadBased: boolean;
 }) {
+  
   const router = useRouter();
   const [tossWinner, setTossWinner] = useState<string | null>(null);
   const [tossDecision, setTossDecision] = useState<"bat" | "bowl" | null>(null);
@@ -37,7 +40,7 @@ export default function TossForm({
       return;
     }
 
-    router.push(`/match/${matchId}/score`);
+    router.push(isSquadBased ? `/match/${matchId}/openers` : `/match/${matchId}/score`);
   };
 
   return (

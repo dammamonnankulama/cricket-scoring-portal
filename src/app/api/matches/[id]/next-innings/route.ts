@@ -42,6 +42,9 @@ export async function POST(
     fallOfWickets: [],
     deliveries: [],
     isCompleted: false,
+    isSquadBased: !!(match.squad1Id && match.squad2Id),
+    battingCard: {},
+    bowlingCard: {},
   });
 
   match.currentInningsNumber = 2;

@@ -41,6 +41,12 @@ const InningsSchema = new Schema({
   wickets: { type: Number, default: 0 },
   completedOvers: { type: Number, default: 0 },
   ballsInCurrentOver: { type: Number, default: 0 },
+  isSquadBased: { type: Boolean, default: false },
+  openingStriker: { type: String, default: null },
+  openingNonStriker: { type: String, default: null },
+  openingBowler: { type: String, default: null },
+  battingCard: { type: Schema.Types.Mixed, default: {} },
+  bowlingCard: { type: Schema.Types.Mixed, default: {} },
   extras: {
     wides: { type: Number, default: 0 },
     noBalls: { type: Number, default: 0 },
@@ -68,6 +74,9 @@ const MatchSchema = new Schema(
     ballsPerOver: { type: Number, required: true, default: 6 },
     tossWinner: { type: String },
     tossDecision: { type: String, enum: ["bat", "bowl"] },
+    strikerName: { type: String, default: null },
+    nonStrikerName: { type: String, default: null },
+    bowlerName: { type: String, default: null },
     status: {
       type: String,
       enum: ["scheduled", "toss_pending", "in_progress", "innings_break", "completed"],

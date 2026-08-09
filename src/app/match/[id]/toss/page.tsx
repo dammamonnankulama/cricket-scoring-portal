@@ -27,6 +27,7 @@ export default async function TossPage({
       matchId={id}
       team1Name={match.team1Name}
       team2Name={match.team2Name}
+      isSquadBased={!!(match.squad1Id && match.squad2Id)}
     />
   );
 }
