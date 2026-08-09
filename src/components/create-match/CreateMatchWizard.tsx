@@ -3,10 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import SquadPicker from "./SquadPicker";
+import MatchParamsForm from "./MatchParamsForm";
 
 export default function CreateMatchWizard() {
   const [squad1, setSquad1] = useState<any>(null);
   const [squad2, setSquad2] = useState<any>(null);
+  const [step, setStep] = useState<"squads" | "params">("squads");
 
   const bothSelected = squad1 && squad2;
 
@@ -18,42 +20,32 @@ export default function CreateMatchWizard() {
         </Link>
 
         <h1 className="text-xl sm:text-2xl font-bold text-white mb-1">Create Match</h1>
-        <p className="text-sm text-slate-400 mb-6">Select the two squads playing</p>
+        <p className="text-sm text-slate-400 mb-6">
+          {step === "squads" ? "Select the two squads playing" : "Set up match details"}
+        </p>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <SquadPicker label="Team 1" selectedSquad={squad1} onSelect={setSquad1} />
-          <SquadPicker label="Team 2" selectedSquad={squad2} onSelect={setSquad2} />
-        </div>
-
-        {bothSelected && (
-          <div className="mt-6 bg-slate-900 border border-emerald-800 rounded-xl p-5 text-center">
-            <div className="flex items-center justify-center gap-4">
-              <TeamBadge squad={squad1} />
-              <span className="text-slate-500 text-sm">vs</span>
-              <TeamBadge squad={squad2} />
+        {step === "squads" && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <SquadPicker label="Team 1" selectedSquad={squad1} onSelect={setSquad1} />
+              <SquadPicker label="Team 2" selectedSquad={squad2} onSelect={setSquad2} />
             </div>
-            <p className="text-slate-500 text-xs mt-4">
-              Match parameters (overs, ground, etc.) — coming in Step 26
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
-function TeamBadge({ squad }: { squad: any }) {
-  return (
-    <div className="flex flex-col items-center">
-      <div className="w-14 h-14 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center overflow-hidden">
-        {squad.logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={squad.logoUrl} alt={squad.name} className="w-full h-full object-cover" />
-        ) : (
-          <span className="text-slate-500 text-[10px]">No Logo</span>
+            {bothSelected && (
+              <button
+                onClick={() => setStep("params")}
+                className="w-full mt-6 bg-emerald-600 hover:bg-emerald-500 text-white font-medium py-3 rounded-lg transition active:scale-[0.98]"
+              >
+                Continue
+              </button>
+            )}
+          </>
+        )}
+
+        {step === "params" && bothSelected && (
+          <MatchParamsForm squad1={squad1} squad2={squad2} onBack={() => setStep("squads")} />
         )}
       </div>
-      <p className="text-white text-sm font-medium mt-2">{squad.name}</p>
     </div>
   );
 }

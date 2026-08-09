@@ -36,6 +36,7 @@ const tiles = [
 ];
 
 function resumeHref(match: any) {
+  if (match.status === "scheduled") return `/match/${match._id}/review`;
   return match.status === "toss_pending"
     ? `/match/${match._id}/toss`
     : `/match/${match._id}/score`;
@@ -43,12 +44,14 @@ function resumeHref(match: any) {
 
 function resumeStatusLabel(status: string) {
   const map: Record<string, string> = {
+    scheduled: "Scheduled",
     toss_pending: "Toss pending",
     in_progress: "In progress",
     innings_break: "Innings break",
   };
   return map[status] || status;
 }
+
 
 export default async function DashboardPage() {
   const session = await auth();
@@ -73,41 +76,41 @@ export default async function DashboardPage() {
         </div>
 
         {inProgressMatches.length > 0 && (
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
-                Continue Match
-              </h2>
-              {inProgressMatches.length > 3 && (
-                <Link
-                  href="/matches/active"
-                  className="text-xs text-emerald-400 hover:text-emerald-300 font-medium"
-                >
-                  View All ({inProgressMatches.length})
-                </Link>
-              )}
-            </div>
-            <div className="space-y-2">
-              {inProgressMatches.slice(0, 3).map((match: any) => (
-                <Link
-                  key={match._id.toString()}
-                  href={resumeHref(match)}
-                  className="flex items-center justify-between bg-slate-900 border border-amber-700/50 rounded-xl p-4 hover:border-amber-500 transition active:scale-[0.99]"
-                >
-                  <div>
-                    <p className="text-white text-sm font-medium">
-                      {match.team1Name} vs {match.team2Name}
-                    </p>
-                    <p className="text-amber-400 text-xs mt-0.5">
-                      {resumeStatusLabel(match.status)}
-                    </p>
-                  </div>
-                  <span className="text-emerald-400 text-sm font-medium">Resume →</span>
-                </Link>
-              ))}
-            </div>
+  <div className="mb-8">
+    <div className="flex items-center justify-between mb-3">
+      <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+        Continue Match
+      </h2>
+      {inProgressMatches.length > 3 && (
+        <Link
+          href="/matches/active"
+          className="text-xs text-emerald-400 hover:text-emerald-300 font-medium"
+        >
+          View All ({inProgressMatches.length})
+        </Link>
+      )}
+    </div>
+    <div className="space-y-2">
+      {inProgressMatches.slice(0, 3).map((match: any) => (
+        <Link
+          key={match._id.toString()}
+          href={resumeHref(match)}
+          className="flex items-center justify-between bg-slate-900 border border-amber-700/50 rounded-xl p-4 hover:border-amber-500 transition active:scale-[0.99]"
+        >
+          <div>
+            <p className="text-white text-sm font-medium">
+              {match.team1Name} vs {match.team2Name}
+            </p>
+            <p className="text-amber-400 text-xs mt-0.5">
+              {resumeStatusLabel(match.status)}
+            </p>
           </div>
-        )}
+          <span className="text-emerald-400 text-sm font-medium">Resume →</span>
+        </Link>
+      ))}
+    </div>
+  </div>
+)}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-5 lg:grid-cols-4">
           {tiles.map((tile) =>
             tile.active ? (

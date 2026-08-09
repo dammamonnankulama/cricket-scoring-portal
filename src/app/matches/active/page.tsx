@@ -4,13 +4,16 @@ import { auth } from "@/lib/auth";
 import Link from "next/link";
 
 function resumeHref(match: any) {
+  if (match.status === "scheduled") return `/match/${match._id}/review`;
   return match.status === "toss_pending"
     ? `/match/${match._id}/toss`
     : `/match/${match._id}/score`;
 }
 
+
 function resumeStatusLabel(status: string) {
   const map: Record<string, string> = {
+    scheduled: "Scheduled",
     toss_pending: "Toss pending",
     in_progress: "In progress",
     innings_break: "Innings break",
@@ -24,7 +27,7 @@ export default async function ActiveMatchesPage() {
   await connectDB();
   const matches = await Match.find({
     createdBy: session?.user?.id,
-    status: { $in: ["toss_pending", "in_progress", "innings_break"] },
+    status: { $in: ["scheduled", "toss_pending", "in_progress", "innings_break"] },
   })
     .sort({ updatedAt: -1 })
     .lean();
