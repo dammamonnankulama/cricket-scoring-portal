@@ -6,6 +6,9 @@ const DeliverySchema = new Schema(
     overNumber: { type: Number, required: true },
     ballInOver: { type: Number, required: true },
     runs: { type: Number, required: true, default: 0 },
+    strikerName: { type: String, default: null },
+    nonStrikerName: { type: String, default: null },
+    bowlerName: { type: String, default: null },
     extraType: {
       type: String,
       enum: ["none", "wide", "noball", "bye", "legbye"],
@@ -88,5 +91,9 @@ const MatchSchema = new Schema(
   },
   { timestamps: true }
 );
+
+if (process.env.NODE_ENV !== "production" && mongoose.models.Match) {
+  delete mongoose.models.Match;
+}
 
 export default models.Match || model("Match", MatchSchema);

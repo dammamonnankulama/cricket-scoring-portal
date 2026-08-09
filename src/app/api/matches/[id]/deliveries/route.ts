@@ -76,6 +76,8 @@ export async function POST(
     }
 
     const updated = applyDelivery(currentInnings, match.ballsPerOver, input);
+    console.log("Delivery input:", JSON.stringify(input));
+    console.log("Last delivery after apply:", JSON.stringify(updated.deliveries[updated.deliveries.length - 1]));
 
     const target =
       match.currentInningsNumber === 2 ? match.innings[0].totalRuns + 1 : null;
@@ -84,6 +86,11 @@ export async function POST(
     updated.isCompleted = isComplete;
 
     match.innings[inningsIndex] = updated;
+    console.log(
+      "Deliveries after assignment before save:",
+      JSON.stringify(match.innings[inningsIndex].deliveries)
+    );
+    match.markModified("innings");
 
     if (isComplete) {
       if (match.currentInningsNumber === 1) {
